@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>discogs-cleaner</title>
+<style>
+  :root {
+    --bg: #0e0e0e;
+    --bg2: #161616;
+    --bg3: #1e1e1e;
+    --border: #2a2a2a;
+    --border2: #333;
+    --text: #e8e8e8;
+    --text2: #888;
+    --text3: #555;
+    --green: #3ddc84;
+    --green-bg: #0e2318;
+    --red: #ff5c5c;
+    --red-bg: #220e0e;
+    --amber: #f0a500;
+    --amber-bg: #1e1500;
+    --blue: #4a9eff;
+    --blue-bg: #0a1a2e;
+    --mono: 'Courier New', Courier, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 13px; min-height: 100vh; }
+
+  header { border-bottom: 1px solid var(--border); padding: 1.25rem 2rem; display: flex; align-items: baseline; gap: 1rem; }
+  .logo { font-size: 16px; letter-spacing: 0.05em; color: var(--text); }
+  .logo span { color: var(--green); }
+  .logo-sub { font-size: 11px; color: var(--text3); letter-spacing: 0.1em; }
+
+  .layout { display: grid; grid-template-columns: 300px 1fr; height: calc(100vh - 53px); }
+
+  .sidebar { border-right: 1px solid var(--border); padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; overflow-y: auto; }
+  .main { padding: 1.25rem; overflow-y: auto; }
+
+  .section-label { font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text3); margin-bottom: 0.6rem; }
+
+  .field { margin-bottom: 0.75rem; }
+  .field label { display: block; font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+  .field input, .field textarea, .field select {
+    width: 100%; background: var(--bg2); border: 1px solid var(--border2);
+    color: var(--text); font-family: var(--mono); font-size: 12px;
+    padding: 6px 10px; border-radius: 4px; outline: none;
+  }
+  .field input:focus, .field textarea:focus { border-color: var(--green); }
+  .field textarea { resize: vertical; min-height: 160px; line-height: 1.6; }
+
+  .format-pill {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 4px;
+    padding: 8px 10px; font-size: 11px; color: var(--green); line-height: 1.8;
+    margin-bottom: 0.75rem;
+  }
+  .format-pill .dim { color: var(--text3); }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 4px; font-family: var(--mono); font-size: 12px; cursor: pointer; border: 1px solid; transition: opacity 0.15s; }
+  .btn:hover { opacity: 0.8; }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .btn-green { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+  .btn-ghost { background: transparent; border-color: var(--border2); color: var(--text2); }
+  .btn-red { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 1.25rem; }
+  .stat { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 0.75rem; text-align: center; }
+  .stat-n { font-size: 20px; color: var(--text); }
+  .stat-l { font-size: 10px; color: var(--text3); letter-spacing: 0.1em; text-transform: uppercase; margin-top: 2px; }
+
+  .results-table { width: 100%; border-collapse: collapse; }
+  .results-table th { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text3); text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  .results-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 12px; }
+  .results-table tr:last-child td { border-bottom: none; }
+  .results-table tr:hover td { background: var(--bg2); }
+  .old-name { color: var(--text3); font-size: 11px; }
+  .new-name { color: var(--text); margin-top: 3px; }
+  .new-name.changed { color: var(--green); }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 100px; font-size: 10px; letter-spacing: 0.05em; white-space: nowrap; }
+  .badge-ok { background: var(--green-bg); color: var(--green); border: 1px solid #1a4a2e; }
+  .badge-err { background: var(--red-bg); color: var(--red); border: 1px solid #4a1a1a; }
+  .badge-skip { background: var(--amber-bg); color: var(--amber); border: 1px solid #3a2a00; }
+  .badge-pending { background: var(--bg3); color: var(--text3); border: 1px solid var(--border); }
+  .badge-cat { background: var(--blue-bg); color: var(--blue); border: 1px solid #0a2a4a; }
+
+  .log-box { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 0.75rem 1rem; font-size: 11px; max-height: 160px; overflow-y: auto; line-height: 1.7; margin-top: 1rem; }
+  .log-ok { color: var(--green); }
+  .log-err { color: var(--red); }
+  .log-info { color: var(--text3); }
+  .log-warn { color: var(--amber); }
+
+  .empty-state { text-align: center; color: var(--text3); padding: 4rem 2rem; line-height: 2; }
+  .empty-state .big { font-size: 32px; margin-bottom: 0.5rem; }
+
+  .progress-bar { height: 2px; background: var(--border); border-radius: 1px; margin-bottom: 1rem; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--green); transition: width 0.3s; border-radius: 1px; }
+
+  .tip { font-size: 11px; color: var(--text3); margin-top: 4px; line-height: 1.6; }
+
+  .conflict-badge { background: var(--amber-bg); color: var(--amber); border: 1px solid #3a2a00; font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-left: 6px; }
+
+  .editable-name { background: transparent; border: none; border-bottom: 1px solid var(--border2); color: var(--green); font-family: var(--mono); font-size: 12px; width: 100%; outline: none; padding: 1px 0; }
+  .editable-name:focus { border-bottom-color: var(--green); }
+
+  #tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem; }
+  .tab { padding: 8px 16px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text3); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab.active { color: var(--green); border-bottom-color: var(--green); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">discogs<span>-cleaner</span></div>
+  <div class="logo-sub">folder rename tool — nmyriad</div>
+</header>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div>
+      <div class="section-label">Auth</div>
+      <div class="field">
+        <label>Consumer Key</label>
+        <input type="text" id="consumer-key" placeholder="OHz..." />
+      </div>
+      <div class="field">
+        <label>Consumer Secret</label>
+        <input type="password" id="consumer-secret" placeholder="Mvz..." />
+      </div>
+      <p class="tip">Get these at discogs.com/settings/developers. Stored only in memory — never sent anywhere except Discogs.</p>
+    </div>
+
+    <div>
+      <div class="section-label">Target format</div>
+      <div class="format-pill">
+        <span class="dim">[</span>CAT001<span class="dim">]</span> Artist <span class="dim">-</span> Title <span class="dim">(</span>Year<span class="dim">)</span><br>
+        <span style="font-size:10px;color:var(--text3)">e.g. [IHT014] Tino Machauer - Cesta (2024)</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Paste folder names</div>
+      <div class="field">
+        <textarea id="folder-input" placeholder="[IHT013] Out of Office&#10;(1997) Delerium - Karma&#10;delerium silence&#10;artist - album name&#10;[DGS002] Luca Olivotto - I Swear (2023)"></textarea>
+      </div>
+      <p class="tip">One folder per line. Supports: catalog numbers [CAT001], (year) prefix, artist - title, or raw names. Already-correct folders are detected and skipped.</p>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-green" onclick="run()">▶ fetch &amp; rename</button>
+      <button class="btn btn-ghost" onclick="reset()">reset</button>
+    </div>
+
+    <div>
+      <div class="section-label">Options</div>
+      <div class="field">
+        <label>Rate limit (ms between requests)</label>
+        <input type="number" id="rate-limit" value="500" min="300" max="2000" />
+      </div>
+      <div class="field">
+        <label>Max search results to check</label>
+        <select id="max-results">
+          <option value="3">3 (faster)</option>
+          <option value="5" selected>5 (default)</option>
+          <option value="10">10 (thorough)</option>
+        </select>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div id="empty-state" class="empty-state">
+      <div class="big">⟁</div>
+      <div>paste folder names on the left</div>
+      <div>and hit fetch &amp; rename</div>
+    </div>
+
+    <div id="results-panel" style="display:none">
+      <div id="tab-bar">
+        <div class="tab active" onclick="switchTab('all')">All</div>
+        <div class="tab" onclick="switchTab('changed')">Changed</div>
+        <div class="tab" onclick="switchTab('errors')">Errors</div>
+        <div class="tab" onclick="switchTab('skipped')">Skipped</div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="stat-n" id="s-total">0</div><div class="stat-l">Total</div></div>
+        <div class="stat"><div class="stat-n" id="s-found" style="color:var(--green)">0</div><div class="stat-l">Found</div></div>
+        <div class="stat"><div class="stat-n" id="s-err" style="color:var(--red)">0</div><div class="stat-l">Errors</div></div>
+        <div class="stat"><div class="stat-n" id="s-skip" style="color:var(--amber)">0</div><div class="stat-l">Skipped</div></div>
+      </div>
+
+      <div class="progress-bar"><div class="progress-fill" id="progress" style="width:0%"></div></div>
+
+      <div class="btn-row" style="margin-bottom:1rem">
+        <button class="btn btn-green" onclick="copyTSV()">⎘ copy rename list</button>
+        <button class="btn btn-ghost" onclick="exportJSON()">↓ export JSON</button>
+        <button class="btn btn-ghost" onclick="copyPython()">⎘ copy python script</button>
+      </div>
+
+      <table class="results-table" id="results-table">
+        <thead>
+          <tr>
+            <th style="width:40%">original</th>
+            <th style="width:45%">new name</th>
+            <th style="width:15%">status</th>
+          </tr>
+        </thead>
+        <tbody id="results-body"></tbody>
+      </table>
+
+      <div class="log-box" id="log-box"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+const DISCOGS_BASE = 'https://api.discogs.com';
+let allResults = [];
+let currentTab = 'all';
+let isRunning = false;
+
+function getKey() { return document.getElementById('consumer-key').value.trim(); }
+function getSecret() { return document.getElementById('consumer-secret').value.trim(); }
+function getRateLimit() { return parseInt(document.getElementById('rate-limit').value) || 500; }
+function getMaxResults() { return parseInt(document.getElementById('max-results').value) || 5; }
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function log(msg, type = 'info') {
+  const box = document.getElementById('log-box');
+  const line = document.createElement('div');
+  line.className = 'log-' + type;
+  line.textContent = new Date().toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit',second:'2-digit'}) + '  ' + msg;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+// Parse a raw folder name into structured data
+function parseFolder(raw) {
+  raw = raw.trim();
+  if (!raw) return null;
+
+  // Already perfect: [CAT001] Artist - Title (Year)
+  const perfect = raw.match(/^\[([A-Z0-9\-]+)\]\s+(.+?)\s+-\s+(.+?)\s+\((\d{4})\)$/i);
+  if (perfect) {
+    return { original: raw, catalog: perfect[1].toUpperCase(), artist: perfect[2], title: perfect[3], year: perfect[4], mode: 'perfect' };
+  }
+
+  // Has catalog: [CAT001] ...rest
+  const catMatch = raw.match(/^\[([A-Z0-9\-]+)\]\s*(.*)$/i);
+  if (catMatch) {
+    return { original: raw, catalog: catMatch[1].toUpperCase(), rest: catMatch[2].trim(), mode: 'catalog' };
+  }
+
+  // Year-first prefix: (1997) Artist - Title
+  const yearFirst = raw.match(/^\((\d{4})\)\s+(.+?)\s+-\s+(.+)$/);
+  if (yearFirst) {
+    return { original: raw, year: yearFirst[1], artist: yearFirst[2].trim(), title: yearFirst[3].trim(), mode: 'search' };
+  }
+
+  // artist - title pattern
+  const dashMatch = raw.match(/^(.+?)\s+-\s+(.+?)(?:\s+\((\d{4})\))?$/);
+  if (dashMatch) {
+    return { original: raw, artist: dashMatch[1].trim(), title: dashMatch[2].trim(), year: dashMatch[3] || '', mode: 'search' };
+  }
+
+  // bare title / label folder
+  const wordCount = raw.split(/\s+/).length;
+  if (wordCount <= 2) {
+    return { original: raw, skip: true, reason: 'looks like a label folder — too short to search safely' };
+  }
+
+  return { original: raw, title: raw, mode: 'search' };
+}
+
+async function discogsFetch(url) {
+  const key = getKey();
+  const secret = getSecret();
+  if (!key || !secret) throw new Error('Missing consumer key/secret');
+  const sep = url.includes('?') ? '&' : '?';
+  const fullUrl = `${DISCOGS_BASE}${url}${sep}key=${key}&secret=${secret}`;
+  const res = await fetch(fullUrl, { headers: { 'User-Agent': 'DiscogsCleanerApp/1.0 +https://github.com/nmyriad/discogs-cleaner' } });
+  if (res.status === 429) throw new Error('Rate limited by Discogs — slow down');
+  if (!res.ok) throw new Error(`Discogs error ${res.status}`);
+  return res.json();
+}
+
+async function searchByCatalog(catno) {
+  const data = await discogsFetch(`/database/search?catno=${encodeURIComponent(catno)}&type=release&per_page=${getMaxResults()}`);
+  return data.results || [];
+}
+
+async function searchByQuery(q) {
+  const data = await discogsFetch(`/database/search?q=${encodeURIComponent(q)}&type=release&per_page=${getMaxResults()}`);
+  return data.results || [];
+}
+
+function parseHit(hit, preferredCatalog) {
+  let artist = '', title = hit.title || '';
+  if (title.includes(' - ')) {
+    const parts = title.split(' - ');
+    artist = parts[0].trim();
+    title = parts.slice(1).join(' - ').trim();
+  }
+  const isVA = !artist || artist.toLowerCase() === 'various' || artist.toLowerCase() === 'various artists';
+  const year = hit.year ? String(hit.year) : '';
+  const catno = preferredCatalog || ((hit.catno && hit.catno.toLowerCase() !== 'none') ? hit.catno.trim() : '');
+  return { artist: isVA ? '' : artist, title, year, catno };
+}
+
+function buildName(catno, artist, title, year) {
+  const cat = catno ? `[${catno}] ` : '';
+  const yr = year ? ` (${year})` : '';
+  if (artist) return `${cat}${artist} - ${title}${yr}`;
+  return `${cat}${title}${yr}`;
+}
+
+async function processFolder(parsed, idx, total) {
+  if (parsed.skip) {
+    return { original: parsed.original, newName: parsed.original, status: 'skip', reason: parsed.reason, hit: null };
+  }
+
+  // Already perfect — verify year/catalog still match, accept as-is
+  if (parsed.mode === 'perfect') {
+    const expected = buildName(parsed.catalog, parsed.artist, parsed.title, parsed.year);
+    if (expected === parsed.original) {
+      log(`✓ already correct: ${parsed.original}`, 'ok');
+      return { original: parsed.original, newName: parsed.original, status: 'skip', reason: 'already correctly named', hit: null };
+    }
+  }
+
+  try {
+    let hits = [];
+
+    if (parsed.mode === 'catalog' || parsed.mode === 'perfect') {
+      log(`[${idx}/${total}] catalog lookup: ${parsed.catalog}`, 'info');
+      hits = await searchByCatalog(parsed.catalog);
+      if (!hits.length && parsed.rest) {
+        log(`  → no catalog hits, falling back to search: ${parsed.catalog} ${parsed.rest}`, 'warn');
+        hits = await searchByQuery(`${parsed.catalog} ${parsed.rest}`);
+      }
+    } else {
+      const q = parsed.artist ? `${parsed.artist} ${parsed.title}` : parsed.title;
+      log(`[${idx}/${total}] searching: ${q}`, 'info');
+      hits = await searchByQuery(q);
+    }
+
+    if (!hits.length) {
+      log(`✗ not found: ${parsed.original}`, 'err');
+      return { original: parsed.original, newName: parsed.original, status: 'error', reason: 'not found on Discogs', hit: null };
+    }
+
+    const hit = hits[0];
+    const { artist, title, year, catno } = parseHit(hit, parsed.catalog || '');
+    const newName = buildName(catno, artist, title, year);
+
+    log(`✓ ${parsed.original} → ${newName}`, 'ok');
+    return { original: parsed.original, newName, status: 'found', reason: '', hit, catno, artist, title, year };
+
+  } catch (e) {
+    log(`✗ error on "${parsed.original}": ${e.message}`, 'err');
+    return { original: parsed.original, newName: parsed.original, status: 'error', reason: e.message, hit: null };
+  }
+}
+
+async function run() {
+  if (isRunning) return;
+  if (!getKey() || !getSecret()) { alert('Enter your Discogs consumer key and secret first.'); return; }
+
+  const raw = document.getElementById('folder-input').value;
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  if (!lines.length) { alert('Paste some folder names first.'); return; }
+
+  isRunning = true;
+  allResults = [];
+  document.getElementById('log-box').innerHTML = '';
+  document.getElementById('results-body').innerHTML = '';
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('results-panel').style.display = 'block';
+  document.getElementById('progress').style.width = '0%';
+  updateStats();
+
+  const parsed = lines.map(parseFolder).filter(Boolean);
+
+  for (let i = 0; i < parsed.length; i++) {
+    const result = await processFolder(parsed[i], i + 1, parsed.length);
+    allResults.push(result);
+    renderRow(result, allResults.length - 1);
+    updateStats();
+    document.getElementById('progress').style.width = `${Math.round(((i + 1) / parsed.length) * 100)}%`;
+    if (i < parsed.length - 1) await sleep(getRateLimit());
+  }
+
+  document.getElementById('progress').style.width = '100%';
+  log(`Done. ${allResults.filter(r => r.status === 'found').length} renamed, ${allResults.filter(r => r.status === 'error').length} errors.`, 'ok');
+  isRunning = false;
+}
+
+function updateStats() {
+  document.getElementById('s-total').textContent = allResults.length;
+  document.getElementById('s-found').textContent = allResults.filter(r => r.status === 'found').length;
+  document.getElementById('s-err').textContent = allResults.filter(r => r.status === 'error').length;
+  document.getElementById('s-skip').textContent = allResults.filter(r => r.status === 'skip').length;
+}
+
+function renderRow(r, idx) {
+  if (!shouldShow(r)) return;
+  const tbody = document.getElementById('results-body');
+  const changed = r.original !== r.newName;
+  const tr = document.createElement('tr');
+  tr.dataset.idx = idx;
+  tr.dataset.status = r.status;
+
+  const badge = r.status === 'found' ? '<span class="badge badge-ok">renamed</span>'
+    : r.status === 'skip' ? '<span class="badge badge-skip">skip</span>'
+    : '<span class="badge badge-err">error</span>';
+
+  tr.innerHTML = `
+    <td>
+      <div class="old-name">${escHtml(r.original)}</div>
+      ${r.reason ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">${escHtml(r.reason)}</div>` : ''}
+    </td>
+    <td>
+      ${r.status === 'found'
+        ? `<input class="editable-name" value="${escHtml(r.newName)}" data-idx="${idx}" onchange="editResult(this)" />`
+        : `<div class="old-name">${escHtml(r.newName)}</div>`}
+    </td>
+    <td>${badge}</td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function editResult(input) {
+  const idx = parseInt(input.dataset.idx);
+  allResults[idx].newName = input.value.trim();
+}
+
+function shouldShow(r) {
+  if (currentTab === 'all') return true;
+  if (currentTab === 'changed') return r.status === 'found' && r.original !== r.newName;
+  if (currentTab === 'errors') return r.status === 'error';
+  if (currentTab === 'skipped') return r.status === 'skip';
+  return true;
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  const tbody = document.getElementById('results-body');
+  tbody.innerHTML = '';
+  allResults.forEach((r, i) => renderRow(r, i));
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function reset() {
+  allResults = [];
+  isRunning = false;
+  document.getElementById('results-panel').style.display = 'none';
+  document.getElementById('empty-state').style.display = 'block';
+  document.getElementById('log-box').innerHTML = '';
+  document.getElementById('folder-input').value = '';
+  document.getElementById('progress').style.width = '0%';
+}
+
+function copyTSV() {
+  const lines = allResults
+    .filter(r => r.status === 'found' && r.original !== r.newName)
+    .map(r => `${r.original}\t→\t${r.newName}`)
+    .join('\n');
+  navigator.clipboard.writeText(lines).then(() => showToast('Copied rename list'));
+}
+
+function exportJSON() {
+  const data = allResults.map(r => ({ original: r.original, newName: r.newName, status: r.status }));
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'discogs-cleaner-results.json'; a.click();
+}
+
+function copyPython() {
+  const pairs = allResults
+    .filter(r => r.status === 'found' && r.original !== r.newName)
+    .map(r => `    (${JSON.stringify(r.original)}, ${JSON.stringify(r.newName)}),`)
+    .join('\n');
+
+  const script = `#!/usr/bin/env python3
+"""
+discogs-cleaner — rename.py
+Generated by discogs-cleaner (github.com/nmyriad/discogs-cleaner)
+
+Usage:
+  python rename.py --dry-run          # preview renames, no changes made
+  python rename.py --path "C:/Music"  # apply renames in this directory
+"""
+
+import os, sys, argparse
+
+RENAMES = [
+${pairs}
+]
+
+def main():
+    parser = argparse.ArgumentParser(description='Rename music folders using Discogs metadata.')
+    parser.add_argument('--path', default='.', help='Root directory containing the folders to rename')
+    parser.add_argument('--dry-run', action='store_true', help='Preview renames without making changes')
+    args = parser.parse_args()
+
+    root = os.path.abspath(args.path)
+    print(f"Root: {root}")
+    print(f"Mode: {'DRY RUN' if args.dry_run else 'LIVE'}\\n")
+
+    ok, skip, err = 0, 0, 0
+    for old_name, new_name in RENAMES:
+        old_path = os.path.join(root, old_name)
+        new_path = os.path.join(root, new_name)
+        if not os.path.exists(old_path):
+            print(f"  SKIP (not found): {old_name}")
+            skip += 1
+            continue
+        if os.path.exists(new_path) and old_path != new_path:
+            print(f"  SKIP (conflict):  {old_name} -> {new_name}")
+            skip += 1
+            continue
+        print(f"  {'WOULD RENAME' if args.dry_run else 'RENAME'}: {old_name}\\n           -> {new_name}")
+        if not args.dry_run:
+            try:
+                os.rename(old_path, new_path)
+                ok += 1
+            except Exception as e:
+                print(f"  ERROR: {e}")
+                err += 1
+        else:
+            ok += 1
+
+    print(f"\\nDone. {ok} renamed, {skip} skipped, {err} errors.")
+
+if __name__ == '__main__':
+    main()
+`;
+  navigator.clipboard.writeText(script).then(() => showToast('Python script copied to clipboard'));
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;background:#1e1e1e;border:1px solid #3ddc84;color:#3ddc84;padding:8px 16px;border-radius:4px;font-family:monospace;font-size:12px;z-index:999;';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+</script>
+</body>
+</html>

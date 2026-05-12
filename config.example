@@ -1,0 +1,6 @@
+# discogs-cleaner config
+# Copy this file to config.py and fill in your credentials
+# NEVER commit config.py to git
+
+DISCOGS_CONSUMER_KEY = "your_consumer_key_here"
+DISCOGS_CONSUMER_SECRET = "your_consumer_secret_here"
