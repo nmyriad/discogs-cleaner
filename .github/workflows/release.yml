@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Extract changelog notes for this version
+        id: notes
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          # Strip the leading 'v' for matching (v1.2 -> 1.2)
+          VER_NUM="${VERSION#v}"
+          
+          # Extract the block between this version header and the next
+          awk "/^## ${VER_NUM} |^## v${VER_NUM} /{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md > release_notes.txt
+          
+          # Fallback: try matching just the version number anywhere in the header
+          if [ ! -s release_notes.txt ]; then
+            awk "/## .*${VER_NUM}/{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md > release_notes.txt
+          fi
+          
+          echo "NOTES<<EOF" >> $GITHUB_OUTPUT
+          cat release_notes.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: ${{ steps.version.outputs.VERSION }}
+          body: ${{ steps.notes.outputs.NOTES }}
+          draft: false
+          prerelease: false

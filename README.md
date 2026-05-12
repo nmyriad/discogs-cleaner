@@ -6,20 +6,9 @@ A web-based tool that looks up music releases on Discogs and renames your librar
 [CAT001] Artist - Title (Year)
 ```
 
-Built for large local libraries with mixed naming conventions — catalog-numbered releases, year-prefixed folders, bare artist/title combos, and everything in between.
+Built for large local libraries with mixed naming conventions — catalog-numbered releases, year-prefixed folders, underscore-separated file names, paren-wrapped catalog numbers, and everything in between.
 
----
-
-## What's new in v1.0
-
-- **Apply on disk** — rename folders directly from the UI, no manual JSON export step needed
-- **Load subfolders** — point the tool at a directory and it auto-populates the folder list
-- **Dry run mode** — preview every rename before anything touches the disk
-- **Local server bridge** (`server.py`) — lightweight Python server that connects the UI to your filesystem
-- **Setup scripts** (`setup.bat` / `setup.sh`) — auto-detect and install Python if missing, then launch the server in one double-click
-- **Inline editing** — correct any Discogs match in the UI before applying
-- **Tabbed results** — filter by All / Changed / Errors / Skipped
-- **Auto-detect input format** — catalog numbers, year-prefix, artist-title, and raw names all handled automatically
+> **Latest release: v1.2** — see [CHANGELOG.md](CHANGELOG.md) for full release notes.
 
 ---
 
@@ -31,7 +20,7 @@ Built for large local libraries with mixed naming conventions — catalog-number
 Double-click setup.bat
 ```
 
-That's it. It will check for Python, install it if needed, and launch the server. Your browser opens automatically at `http://localhost:7842`.
+Checks for Python, installs it if missing, and launches the server. Your browser opens automatically at `http://localhost:7842`.
 
 ### Mac / Linux
 
@@ -50,7 +39,7 @@ python server.py
 
 Then open `http://localhost:7842` in your browser.
 
-To use the UI without the server (no disk integration), just open `index.html` directly in your browser.
+To use the UI without the server (no disk integration), open `index.html` directly in your browser.
 
 ---
 
@@ -80,8 +69,9 @@ Hit **fetch & rename**. The tool searches Discogs for each folder using the best
 | `[IHT013] Out of Office` | Catalog number lookup |
 | `[IHT014] Tino Machauer - Cesta (2024)` | Already correct — skipped |
 | `(1997) Delerium - Karma` | Artist + title search |
+| `Artist_Name-(CAT001)-WEB-2024-WAV` | Paren catalog extracted, format tags stripped |
 | `delerium silence` | Title search |
-| `INHERIT` | Skipped (too short, likely a label folder) |
+| `INHERIT` | Skipped (short, no digits — likely a label folder) |
 
 ### 4. Review & apply
 
@@ -114,6 +104,20 @@ Everything is normalised to:
 | `setup.bat` | Windows: checks for Python, installs if needed, starts server |
 | `setup.sh` | Mac/Linux: checks for Python, installs if needed, starts server |
 | `config.example` | Credentials template — never commit your real keys |
+| `CHANGELOG.md` | Full version history and release notes |
+
+---
+
+## Automated releases
+
+This repo uses a GitHub Actions workflow (`.github/workflows/release.yml`) that automatically creates a GitHub Release whenever a version tag is pushed. Release notes are pulled directly from `CHANGELOG.md`.
+
+To cut a new release:
+
+```powershell
+git tag v1.3
+git push origin main --tags
+```
 
 ---
 
