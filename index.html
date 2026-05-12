@@ -30,6 +30,8 @@
   .field input, .field textarea, .field select { width: 100%; background: var(--bg2); border: 1px solid var(--border2); color: var(--text); font-family: var(--mono); font-size: 12px; padding: 6px 10px; border-radius: 4px; outline: none; }
   .field input:focus, .field textarea:focus { border-color: var(--green); }
   .field textarea { resize: vertical; min-height: 160px; line-height: 1.6; }
+  .field input[type="checkbox"] { width: auto; margin-right: 6px; }
+  .checkbox-row { display: flex; align-items: center; font-size: 11px; color: var(--text2); margin-bottom: 6px; cursor: pointer; }
   .format-pill { background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; font-size: 11px; color: var(--green); line-height: 1.8; margin-bottom: 0.75rem; }
   .format-pill .dim { color: var(--text3); }
   .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 4px; font-family: var(--mono); font-size: 12px; cursor: pointer; border: 1px solid; transition: opacity 0.15s; }
@@ -37,6 +39,8 @@
   .btn:disabled { opacity: 0.3; cursor: not-allowed; }
   .btn-green { background: var(--green-bg); border-color: var(--green); color: var(--green); }
   .btn-ghost { background: transparent; border-color: var(--border2); color: var(--text2); }
+  .btn-amber { background: var(--amber-bg); border-color: var(--amber); color: var(--amber); }
+  .btn-red { background: var(--red-bg); border-color: var(--red); color: var(--red); }
   .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
   .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 1.25rem; }
   .stat { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 0.75rem; text-align: center; }
@@ -48,11 +52,11 @@
   .results-table tr:last-child td { border-bottom: none; }
   .results-table tr:hover td { background: var(--bg2); }
   .old-name { color: var(--text3); font-size: 11px; }
-  .new-name { color: var(--text); margin-top: 3px; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 100px; font-size: 10px; letter-spacing: 0.05em; white-space: nowrap; }
   .badge-ok { background: var(--green-bg); color: var(--green); border: 1px solid #1a4a2e; }
   .badge-err { background: var(--red-bg); color: var(--red); border: 1px solid #4a1a1a; }
   .badge-skip { background: var(--amber-bg); color: var(--amber); border: 1px solid #3a2a00; }
+  .badge-undo { background: var(--blue-bg); color: var(--blue); border: 1px solid #0a2a4a; }
   .log-box { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 0.75rem 1rem; font-size: 11px; max-height: 160px; overflow-y: auto; line-height: 1.7; margin-top: 1rem; }
   .log-ok { color: var(--green); }
   .log-err { color: var(--red); }
@@ -69,6 +73,11 @@
   .tab { padding: 8px 16px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text3); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
   .tab.active { color: var(--green); border-bottom-color: var(--green); }
   .apply-result { display: none; margin-bottom: 0.75rem; padding: 8px 12px; border-radius: 4px; font-size: 11px; background: var(--bg2); border: 1px solid var(--border); }
+  .stats-bar { display: flex; gap: 1.5rem; padding: 0.5rem 2rem; background: var(--bg2); border-bottom: 1px solid var(--border); font-size: 11px; color: var(--text3); }
+  .stats-bar .stat-item { display: flex; gap: 6px; align-items: center; }
+  .stats-bar .stat-val { color: var(--green); font-size: 13px; font-weight: bold; }
+  .delay-indicator { font-size: 10px; color: var(--text3); margin-left: 8px; }
+  .delay-indicator.slow { color: var(--amber); }
 </style>
 </head>
 <body>
@@ -77,6 +86,12 @@
   <div class="logo">discogs<span>-cleaner</span></div>
   <div class="logo-sub">folder rename tool &mdash; nmyriad</div>
 </header>
+
+<div class="stats-bar">
+  <div class="stat-item">session <span class="stat-val" id="stat-session">0</span> renamed</div>
+  <div class="stat-item">lifetime <span class="stat-val" id="stat-lifetime">0</span> renamed</div>
+  <div class="stat-item" id="stat-version" style="margin-left:auto;color:var(--text3)"></div>
+</div>
 
 <div class="layout">
   <aside class="sidebar">
@@ -90,7 +105,11 @@
         <label>Consumer Secret</label>
         <input type="password" id="consumer-secret" placeholder="Mvz..." />
       </div>
-      <p class="tip">Get these at discogs.com/settings/developers. Stored only in memory &mdash; never sent anywhere except Discogs.</p>
+      <div class="btn-row" style="margin-top:4px">
+        <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="saveKeys()">&#128190; save keys</button>
+        <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="clearKeys()">&#215; clear</button>
+      </div>
+      <p class="tip">Keys saved to <code style="color:var(--green)">~/.discogs-cleaner/config.json</code></p>
     </div>
 
     <div>
@@ -111,15 +130,14 @@
         <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="loadFromDisk()">&#8595; load subfolders</button>
         <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="pingServer()">ping server</button>
       </div>
-      <p class="tip" id="path-tip">Run <code style="color:var(--green)">python server.py</code> to enable disk integration. Or paste folder names manually below.</p>
+      <p class="tip" id="path-tip">Run <code style="color:var(--green)">python server.py</code> to enable disk integration.</p>
     </div>
 
     <div>
       <div class="section-label">Paste folder names</div>
       <div class="field">
-        <textarea id="folder-input" placeholder="[IHT013] Out of Office&#10;(1997) Delerium - Karma&#10;delerium silence&#10;artist - album name&#10;[DGS002] Luca Olivotto - I Swear (2023)"></textarea>
+        <textarea id="folder-input" placeholder="[IHT013] Out of Office&#10;(1997) Delerium - Karma&#10;delerium silence&#10;[DGS002] Luca Olivotto - I Swear (2023)"></textarea>
       </div>
-      <p class="tip">One folder per line. Catalog numbers [CAT001], (year) prefix, artist - title, or raw names all supported.</p>
     </div>
 
     <div class="btn-row">
@@ -130,17 +148,23 @@
     <div>
       <div class="section-label">Options</div>
       <div class="field">
-        <label>Rate limit (ms between requests)</label>
-        <input type="number" id="rate-limit" value="500" min="300" max="2000" />
+        <label>Rate limit (ms) <span class="delay-indicator" id="delay-indicator"></span></label>
+        <input type="number" id="rate-limit" value="1000" min="300" max="5000" />
       </div>
       <div class="field">
-        <label>Max search results to check</label>
+        <label>Max search results</label>
         <select id="max-results">
           <option value="3">3 (faster)</option>
           <option value="5" selected>5 (default)</option>
           <option value="10">10 (thorough)</option>
         </select>
       </div>
+      <label class="checkbox-row">
+        <input type="checkbox" id="opt-stamp" checked /> Write discogs-cleaner.txt to renamed folders
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="opt-capitalize" checked /> Fix capitalization from Discogs
+      </label>
     </div>
   </aside>
 
@@ -171,6 +195,7 @@
       <div class="btn-row" style="margin-bottom:0.5rem">
         <button class="btn btn-green" id="apply-btn" onclick="applyOnDisk(false)">&#9654; apply on disk</button>
         <button class="btn btn-ghost" onclick="applyOnDisk(true)">dry run</button>
+        <button class="btn btn-amber" id="undo-btn" onclick="undoLast()" style="display:none">&#8630; undo last apply</button>
         <button class="btn btn-ghost" onclick="copyTSV()">&#8266; copy list</button>
         <button class="btn btn-ghost" onclick="exportJSON()">&#8595; JSON</button>
       </div>
@@ -198,13 +223,33 @@ var currentTab = 'all';
 var isRunning = false;
 var serverAvailable = false;
 var SERVER = 'http://localhost:7842';
+var undoStack = []; // stores {path, renames:[{original, newName}]}
+var currentDelay = 1000;
 
 function qs(id) { return document.getElementById(id); }
 function getKey() { return qs('consumer-key').value.trim(); }
 function getSecret() { return qs('consumer-secret').value.trim(); }
-function getRateLimit() { return parseInt(qs('rate-limit').value) || 500; }
+function getRateLimit() { return parseInt(qs('rate-limit').value) || 1000; }
 function getMaxResults() { return parseInt(qs('max-results').value) || 5; }
+function getStamp() { return qs('opt-stamp').checked; }
+function getCapitalize() { return qs('opt-capitalize').checked; }
 function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+// ─── Title case ──────────────────────────────────────────────────────────────
+var LOWERCASE_WORDS = ['a','an','the','and','but','or','for','nor','on','at','to',
+  'by','in','of','up','as','is','it','its','vs','via','de','la','le','les','el','los'];
+
+function titleCase(str) {
+  if (!getCapitalize()) return str;
+  return str.replace(/\w\S*/g, function(word, idx) {
+    var lower = word.toLowerCase();
+    // Always capitalize: first word, after dash, known proper nouns stay as-is if ALL CAPS
+    if (idx === 0 || LOWERCASE_WORDS.indexOf(lower) === -1) {
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    }
+    return lower;
+  });
+}
 
 function log(msg, type) {
   type = type || 'info';
@@ -212,24 +257,32 @@ function log(msg, type) {
   var line = document.createElement('div');
   line.className = 'log-' + type;
   var t = new Date();
-  var ts = ('0'+t.getHours()).slice(-2) + ':' + ('0'+t.getMinutes()).slice(-2) + ':' + ('0'+t.getSeconds()).slice(-2);
+  var ts = ('0'+t.getHours()).slice(-2)+':'+('0'+t.getMinutes()).slice(-2)+':'+('0'+t.getSeconds()).slice(-2);
   line.textContent = ts + '  ' + msg;
   box.appendChild(line);
   box.scrollTop = box.scrollHeight;
 }
 
-function normalizeToSpaces(s) {
-  // Replace underscores and dots used as word separators with spaces
-  return s.replace(/[_]/g, ' ').replace(/\.(?=[a-zA-Z])/g, ' ').trim();
+function updateDelayIndicator() {
+  var el = qs('delay-indicator');
+  if (currentDelay > getRateLimit()) {
+    el.textContent = '(auto-slowed to ' + currentDelay + 'ms)';
+    el.className = 'delay-indicator slow';
+  } else {
+    el.textContent = '';
+    el.className = 'delay-indicator';
+  }
 }
 
+// ─── Parser ───────────────────────────────────────────────────────────────────
+function normalizeToSpaces(s) {
+  return s.replace(/[_]/g, ' ').replace(/\.(?=[a-zA-Z])/g, ' ').trim();
+}
 function extractYear(s) {
   var m = s.match(/(?:^|[-_\s(])(\d{4})(?:$|[-_\s)])/);
   return m ? m[1] : '';
 }
-
 function cleanSearchQuery(s) {
-  // Strip common non-Discogs suffixes: WEB, WAV, FLAC, MP3, AFO, PTC, format tags
   return s.replace(/[-_\s]+(WEB|WAV|FLAC|MP3|AFO|PTC|AIFF|320|V0|CBR|WEB-\w+)(?=[-_\s]|$)/gi, '').trim();
 }
 
@@ -241,52 +294,54 @@ function parseFolder(raw) {
   var perfect = raw.match(/^\[([A-Z0-9\-]+)\]\s+(.+?)\s+-\s+(.+?)\s+\((\d{4})\)$/i);
   if (perfect) return { original: raw, catalog: perfect[1].toUpperCase(), artist: perfect[2], title: perfect[3], year: perfect[4], mode: 'perfect' };
 
-  // 2. Square bracket catalog: [CAT001] rest
-  var sqCat = raw.match(/^\[([A-Z0-9\-]+)\]\s*(.*)$/i);
+  // 2. Square bracket catalog: [CAT001] rest — but NOT [num - WEB] style (those are year-cat formats)
+  var sqCat = raw.match(/^\[([A-Z][A-Z0-9\-]*\d+[A-Z0-9]*)\]\s*(.*)$/i);
   if (sqCat) return { original: raw, catalog: sqCat[1].toUpperCase(), rest: sqCat[2].trim(), mode: 'catalog' };
 
-  // 3. Paren catalog embedded anywhere: Artist-(CAT001)-stuff or (CAT001)-Artist
+  // 3. Year + bracket-number format: (2015) [47001 - WEB] 47001  OR  (2016) [47004 - WEB] 47004
+  var yearBracketNum = raw.match(/^\((\d{4})\)\s+\[(\d+)\s*[-–]\s*\w+\]\s+\d+$/i);
+  if (yearBracketNum) {
+    return { original: raw, year: yearBracketNum[1], title: yearBracketNum[2], mode: 'search',
+      reason: 'year+bracket-num format, searching by number: ' + yearBracketNum[2] };
+  }
+
+  // 4. Paren catalog embedded anywhere: (CAT001)
   var parenCat = raw.match(/(?:^|[-_\s])\(([A-Z]{2,}\d+[A-Z0-9]*)\)(?:[-_\s]|$)/i);
   if (parenCat) {
     var cat = parenCat[1].toUpperCase();
-    // Build a clean search query from the whole name minus format noise
     var normalized = normalizeToSpaces(cleanSearchQuery(raw));
     var yr = extractYear(raw);
     return { original: raw, catalog: cat, rest: normalized, year: yr, mode: 'catalog', reason: 'catalog in parens: ' + cat };
   }
 
-  // 4. Year-first prefix: (1997) Artist - Title
+  // 5. Year-first prefix: (1997) Artist - Title
   var yearFirst = raw.match(/^\((\d{4})\)\s+(.+?)\s+-\s+(.+)$/);
   if (yearFirst) return { original: raw, year: yearFirst[1], artist: yearFirst[2].trim(), title: yearFirst[3].trim(), mode: 'search' };
 
-  // 5. Artist - Title pattern (space-separated dash)
+  // 6. Artist - Title pattern
   var dashMatch = raw.match(/^(.+?)\s+-\s+(.+?)(?:\s+\((\d{4})\))?$/);
   if (dashMatch) return { original: raw, artist: dashMatch[1].trim(), title: dashMatch[2].trim(), year: dashMatch[3] || '', mode: 'search' };
 
-  // 6. Underscore/hyphen heavy names (file-naming style: Artist_Name-Title-Year)
-  var normalized = normalizeToSpaces(raw);
+  // 7. File-naming style
+  var norm = normalizeToSpaces(raw);
   var yr = extractYear(raw);
-  var wordCount = normalized.split(/\s+/).length;
-
-  // Only skip if genuinely short AND no digits (real label folders like 'INHERIT', 'A7A')
-  if (wordCount <= 2 && !raw.match(/\d/)) {
+  if (norm.split(/\s+/).length <= 2 && !raw.match(/\d/)) {
     return { original: raw, skip: true, reason: 'short name with no numbers — likely a label folder' };
   }
-
-  // Clean up for search
-  var searchable = cleanSearchQuery(normalized);
+  var searchable = cleanSearchQuery(norm);
   if (searchable.split(/\s+/).length <= 1) {
     return { original: raw, skip: true, reason: 'could not extract searchable terms after cleanup' };
   }
-
   return { original: raw, title: searchable, year: yr, mode: 'search', reason: 'normalized from: ' + raw };
 }
 
 function buildName(catno, artist, title, year) {
   var cat = catno ? '[' + catno + '] ' : '';
   var yr = year ? ' (' + year + ')' : '';
-  if (artist) return cat + artist + ' - ' + title + yr;
-  return cat + title + yr;
+  var t = titleCase(title);
+  var a = artist ? titleCase(artist) : '';
+  if (a) return cat + a + ' - ' + t + yr;
+  return cat + t + yr;
 }
 
 function parseHit(hit, preferredCatalog) {
@@ -302,16 +357,40 @@ function parseHit(hit, preferredCatalog) {
   return { artist: isVA ? '' : artist, title: title, year: year, catno: catno };
 }
 
-function discogsFetch(url) {
+// ─── Discogs fetch with auto-backoff ─────────────────────────────────────────
+function discogsFetch(url, retries) {
+  retries = retries === undefined ? 3 : retries;
   var key = getKey(), secret = getSecret();
   if (!key || !secret) return Promise.reject(new Error('Missing consumer key/secret'));
   var sep = url.indexOf('?') !== -1 ? '&' : '?';
   var fullUrl = 'https://api.discogs.com' + url + sep + 'key=' + key + '&secret=' + secret;
-  return fetch(fullUrl, { headers: { 'User-Agent': 'DiscogsCleanerApp/1.1 +https://github.com/nmyriad/discogs-cleaner' } })
+  return fetch(fullUrl, { headers: { 'User-Agent': 'DiscogsCleanerApp/1.5 +https://github.com/nmyriad/discogs-cleaner' } })
     .then(function(r) {
-      if (r.status === 429) throw new Error('Rate limited by Discogs — increase delay in options');
-      if (!r.ok) throw new Error('Discogs error ' + r.status);
+      if (r.status === 429) {
+        if (retries > 0) {
+          currentDelay = Math.min(currentDelay * 2, 5000);
+          updateDelayIndicator();
+          log('Rate limited — backing off to ' + currentDelay + 'ms, retrying...', 'warn');
+          return sleep(currentDelay).then(function() { return discogsFetch(url, retries - 1); });
+        }
+        throw new Error('Rate limited — try increasing delay in options');
+      }
+      if (!r.ok) {
+        if (retries > 0) {
+          return sleep(currentDelay + 500).then(function() { return discogsFetch(url, retries - 1); });
+        }
+        throw new Error('Discogs error ' + r.status);
+      }
       return r.json();
+    })
+    .catch(function(e) {
+      if (retries > 0 && e.message !== 'Missing consumer key/secret') {
+        currentDelay = Math.min(currentDelay + 500, 5000);
+        updateDelayIndicator();
+        log('Fetch failed, retrying (' + retries + ' left)...', 'warn');
+        return sleep(currentDelay).then(function() { return discogsFetch(url, retries - 1); });
+      }
+      throw e;
     });
 }
 
@@ -319,7 +398,6 @@ function searchByCatalog(catno) {
   return discogsFetch('/database/search?catno=' + encodeURIComponent(catno) + '&type=release&per_page=' + getMaxResults())
     .then(function(d) { return d.results || []; });
 }
-
 function searchByQuery(q) {
   return discogsFetch('/database/search?q=' + encodeURIComponent(q) + '&type=release&per_page=' + getMaxResults())
     .then(function(d) { return d.results || []; });
@@ -344,19 +422,14 @@ function processFolder(parsed, idx, total) {
     if (parsed.reason) logMsg += ' (' + parsed.reason + ')';
     log(logMsg, 'info');
     lookupPromise = searchByCatalog(parsed.catalog).then(function(hits) {
-      if (!hits.length) {
-        // Fallback 1: catalog + rest
-        if (parsed.rest) {
-          var q1 = cleanSearchQuery(parsed.rest);
-          log('  no catalog hits, trying: ' + parsed.catalog + ' ' + q1, 'warn');
-          return searchByQuery(parsed.catalog + ' ' + q1);
-        }
-        return hits;
+      if (!hits.length && parsed.rest) {
+        var q1 = cleanSearchQuery(parsed.rest);
+        log('  no catalog hits, trying: ' + parsed.catalog + ' ' + q1, 'warn');
+        return searchByQuery(parsed.catalog + ' ' + q1);
       }
       return hits;
     }).then(function(hits) {
       if (!hits.length && parsed.rest) {
-        // Fallback 2: rest only, no catalog
         var q2 = cleanSearchQuery(normalizeToSpaces(parsed.rest));
         log('  still no hits, searching by name only: ' + q2, 'warn');
         return searchByQuery(q2);
@@ -377,8 +450,9 @@ function processFolder(parsed, idx, total) {
     }
     var p = parseHit(hits[0], parsed.catalog || '');
     var newName = buildName(p.catno, p.artist, p.title, p.year);
+    var discogsUrl = hits[0].resource_url || '';
     log(parsed.original + ' -> ' + newName, 'ok');
-    return { original: parsed.original, newName: newName, status: 'found', reason: '' };
+    return { original: parsed.original, newName: newName, status: 'found', reason: '', discogsUrl: discogsUrl, discogsYear: p.year };
   }).catch(function(e) {
     log('error on "' + parsed.original + '": ' + e.message, 'err');
     return { original: parsed.original, newName: parsed.original, status: 'error', reason: e.message };
@@ -393,6 +467,7 @@ function run() {
   if (!lines.length) { alert('Paste some folder names first.'); return; }
 
   isRunning = true;
+  currentDelay = getRateLimit();
   allResults = [];
   qs('log-box').innerHTML = '';
   qs('results-body').innerHTML = '';
@@ -400,6 +475,7 @@ function run() {
   qs('results-panel').style.display = 'block';
   qs('progress').style.width = '0%';
   qs('apply-result').style.display = 'none';
+  qs('undo-btn').style.display = 'none';
   updateStats();
 
   var parsed = lines.map(parseFolder).filter(Boolean);
@@ -419,7 +495,7 @@ function run() {
       qs('progress').style.width = Math.round(((i + 1) / parsed.length) * 100) + '%';
       i++;
       if (i < parsed.length) {
-        setTimeout(next, getRateLimit());
+        setTimeout(next, currentDelay);
       } else {
         next();
       }
@@ -477,11 +553,13 @@ function switchTab(tab, el) {
 
 function resetAll() {
   allResults = []; isRunning = false;
+  currentDelay = getRateLimit();
   qs('results-panel').style.display = 'none';
   qs('empty-state').style.display = 'block';
   qs('log-box').innerHTML = '';
   qs('folder-input').value = '';
   qs('progress').style.width = '0%';
+  updateDelayIndicator();
 }
 
 function copyTSV() {
@@ -518,14 +596,14 @@ function updateServerStatus(online) {
   } else {
     el.textContent = '● file mode';
     el.style.color = 'var(--text3)';
-    tip.innerHTML = 'Run <code style="color:var(--green)">python server.py</code> to enable disk integration. Or paste folder names manually below.';
+    tip.innerHTML = 'Run <code style="color:var(--green)">python server.py</code> to enable disk integration.';
   }
 }
 
 function pingServer() {
   fetch(SERVER + '/api/ls?path=.', { signal: AbortSignal.timeout(1500) })
-    .then(function(r) { updateServerStatus(true); showToast('Server connected'); })
-    .catch(function() { updateServerStatus(false); showToast('Server not reachable — run: python server.py'); });
+    .then(function(r) { updateServerStatus(true); showToast('Server connected'); loadConfig(); })
+    .catch(function() { updateServerStatus(false); });
 }
 
 function loadFromDisk() {
@@ -556,10 +634,15 @@ function applyOnDisk(dryRun) {
   resultEl.style.color = 'var(--text2)';
   resultEl.textContent = (dryRun ? '[DRY RUN] ' : '') + 'Applying ' + toRename.length + ' renames...';
 
+  var stamp = getStamp();
+  var stampData = toRename.map(function(r) {
+    return { original: r.original, newName: r.newName, discogsUrl: r.discogsUrl || '', year: r.discogsYear || '' };
+  });
+
   fetch(SERVER + '/api/rename', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: path, renames: toRename, dry_run: dryRun })
+    body: JSON.stringify({ path: path, renames: toRename, dry_run: dryRun, stamp: stamp, stamp_data: stampData })
   }).then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.error) throw new Error(data.error);
@@ -570,6 +653,21 @@ function applyOnDisk(dryRun) {
       resultEl.style.color = errors ? 'var(--red)' : 'var(--green)';
       resultEl.textContent = (dryRun ? '[DRY RUN] ' : '') + ok + ' renamed · ' + skipped + ' skipped · ' + errors + ' errors'
         + (dryRun ? ' — run without dry run to apply' : '');
+
+      // Store undo stack
+      if (!dryRun && ok > 0) {
+        var undoEntry = {
+          path: path,
+          renames: data.results
+            .filter(function(r){ return r.result === 'ok'; })
+            .map(function(r){ return { original: r.newName, newName: r.original }; })
+        };
+        undoStack.push(undoEntry);
+        qs('undo-btn').style.display = '';
+        log('Undo available — click "undo last apply" to reverse', 'info');
+        updateStatsBar(ok);
+      }
+
       data.results.forEach(function(res) {
         log((res.result==='ok'?'✓ ':res.result==='dry_run'?'~ ':'✗ ') + res.original
           + (res.newName!==res.original?' -> '+res.newName:'')
@@ -585,7 +683,84 @@ function applyOnDisk(dryRun) {
     .finally(function() { qs('apply-btn').disabled = false; });
 }
 
+function undoLast() {
+  if (!undoStack.length) { showToast('Nothing to undo'); return; }
+  if (!serverAvailable) { showToast('Server not running'); return; }
+  var entry = undoStack[undoStack.length - 1];
+  if (!confirm('Undo last apply? This will rename ' + entry.renames.length + ' folder(s) back to their original names.')) return;
+
+  fetch(SERVER + '/api/rename', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: entry.path, renames: entry.renames, dry_run: false, stamp: false })
+  }).then(function(r) { return r.json(); })
+    .then(function(data) {
+      var ok = data.results.filter(function(r){ return r.result==='ok'; }).length;
+      undoStack.pop();
+      if (!undoStack.length) qs('undo-btn').style.display = 'none';
+      showToast('Undone — ' + ok + ' folders restored');
+      log('Undo applied: ' + ok + ' folders restored to original names', 'ok');
+    })
+    .catch(function(e) { showToast('Undo failed: ' + e.message); });
+}
+
+// ─── Stats ────────────────────────────────────────────────────────────────────
+var sessionRenamed = 0;
+var lifetimeRenamed = 0;
+
+function updateStatsBar(addCount) {
+  if (addCount) {
+    sessionRenamed += addCount;
+    lifetimeRenamed += addCount;
+    // Persist to server
+    fetch(SERVER + '/api/config/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ add_renamed: addCount })
+    }).catch(function(){});
+  }
+  qs('stat-session').textContent = sessionRenamed;
+  qs('stat-lifetime').textContent = lifetimeRenamed;
+}
+
+function loadConfig() {
+  fetch(SERVER + '/api/config/get')
+    .then(function(r) { return r.json(); })
+    .then(function(cfg) {
+      if (cfg.key) qs('consumer-key').value = cfg.key;
+      if (cfg.secret) qs('consumer-secret').value = cfg.secret;
+      lifetimeRenamed = cfg.lifetime_renamed || 0;
+      updateStatsBar(0);
+      if (cfg.key || cfg.secret) showToast('Keys loaded from cache');
+    })
+    .catch(function(){});
+}
+
+function saveKeys() {
+  var key = getKey(), secret = getSecret();
+  if (!key && !secret) { showToast('Enter keys first'); return; }
+  fetch(SERVER + '/api/config/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: key, secret: secret })
+  }).then(function(){ showToast('Keys saved'); })
+    .catch(function(){ showToast('Save failed — is server running?'); });
+}
+
+function clearKeys() {
+  fetch(SERVER + '/api/config/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: '', secret: '' })
+  }).then(function(){
+    qs('consumer-key').value = '';
+    qs('consumer-secret').value = '';
+    showToast('Keys cleared');
+  });
+}
+
 pingServer();
+
 </script>
 </body>
 </html>

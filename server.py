@@ -23,6 +23,7 @@ from urllib.parse import urlparse, parse_qs
 
 PORT = 7842
 ROOT_DIR = os.path.abspath(os.path.dirname(__file__))
+INDEX_FILE = os.path.join(ROOT_DIR, 'index.html')  # overridden by --index arg
 
 
 def sanitize_name(name):
@@ -66,7 +67,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
 
         if path == "/" or path == "/index.html":
-            self.send_file(os.path.join(ROOT_DIR, "index.html"), "text/html; charset=utf-8")
+            self.send_file(INDEX_FILE, "text/html; charset=utf-8")
             return
 
         # API: list subfolders in a directory
@@ -137,6 +138,29 @@ class Handler(BaseHTTPRequestHandler):
                         try:
                             os.rename(old_path, new_path)
                             results.append({"original": old_name, "newName": new_name, "result": "ok"})
+                            # Write stamp file if requested
+                            if data.get("stamp", False):
+                                stamp_entries = {s["original"]: s for s in data.get("stamp_data", [])}
+                                entry = stamp_entries.get(old_name, {})
+                                stamp_path = os.path.join(new_path, "discogs-cleaner.txt")
+                                from datetime import datetime
+                                stamp_lines = [
+                                    "This folder was renamed by discogs-cleaner",
+                                    "https://github.com/nmyriad/discogs-cleaner-desktop",
+                                    "",
+                                    "Date: " + datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                    "Original name: " + old_name,
+                                    "Renamed to: " + new_name,
+                                ]
+                                if entry.get("discogsUrl"):
+                                    stamp_lines.append("Discogs release: " + entry["discogsUrl"])
+                                try:
+                                    with open(stamp_path, "w", encoding="utf-8") as sf:
+                                        sf.write("
+".join(stamp_lines) + "
+")
+                                except Exception:
+                                    pass
                         except OSError as e:
                             results.append({"original": old_name, "newName": new_name, "result": "error", "reason": str(e)})
 
@@ -145,20 +169,68 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": str(e)}, 500)
             return
 
+        # API: get config (cached keys + stats)
+        if parsed.path == '/api/config/get':
+            cfg = load_config()
+            self.send_json(cfg)
+            return
+
+        # API: save config (keys + increment stats)
+        if parsed.path == '/api/config/save':
+            try:
+                data = json.loads(body)
+                cfg = load_config()
+                if 'key' in data: cfg['key'] = data['key']
+                if 'secret' in data: cfg['secret'] = data['secret']
+                if 'add_renamed' in data:
+                    cfg['lifetime_renamed'] = cfg.get('lifetime_renamed', 0) + int(data['add_renamed'])
+                save_config(cfg)
+                self.send_json({'ok': True, 'config': cfg})
+            except Exception as e:
+                self.send_json({'error': str(e)}, 500)
+            return
+
         self.send_response(404)
         self.end_headers()
 
 
+def get_config_path():
+    home = os.path.expanduser('~')
+    cfg_dir = os.path.join(home, '.discogs-cleaner')
+    os.makedirs(cfg_dir, exist_ok=True)
+    return os.path.join(cfg_dir, 'config.json')
+
+def load_config():
+    try:
+        with open(get_config_path(), 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {'key': '', 'secret': '', 'lifetime_renamed': 0}
+
+def save_config(cfg):
+    with open(get_config_path(), 'w', encoding='utf-8') as f:
+        json.dump(cfg, f, indent=2)
+
+
 def main():
+    import io
+    if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(description="discogs-cleaner local server")
     parser.add_argument("--port", type=int, default=PORT)
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--index", type=str, default=None, help="Path to index.html")
     args = parser.parse_args()
+
+    global INDEX_FILE
+    if args.index:
+        INDEX_FILE = os.path.abspath(args.index)
 
     server = HTTPServer(("127.0.0.1", args.port), Handler)
     url = f"http://localhost:{args.port}"
     print(f"\n  discogs-cleaner server running")
-    print(f"  → {url}\n")
+    print(f"  -> {url}\n")
     print("  Press Ctrl+C to stop.\n")
 
     if not args.no_browser:

@@ -2,6 +2,60 @@
 
 ---
 
+## v1.6.0 — stats, key caching, changelog on update
+
+### New
+- **Lifetime + session stats bar** — shown at the top of the UI at all times. Session count resets on reset, lifetime total persists across sessions via `~/.discogs-cleaner/config.json`.
+- **Cached API keys** — consumer key and secret are saved to `~/.discogs-cleaner/config.json` via the server. Auto-filled on launch when server is running. Save and clear buttons in the sidebar.
+- **Changelog dialog on update** — desktop app shows a summary of what changed the first time it launches after an update.
+- **Tray menu improvements** — version number shown in tray tooltip and menu, changelog link added.
+- **Auto-updater fixed** — now correctly checks `nmyriad/discogs-cleaner-desktop` releases and surfaces errors gracefully.
+
+---
+
+## v1.5.0 — planned
+
+### Upcoming
+- **Undo last rename** — one-click revert of the most recent apply on disk operation. Will store a rename log locally so any applied batch can be reversed without manually tracking old names.
+- **Track-level match verification** — after a Discogs result is found, scan the actual audio files inside the folder and cross-reference track count, track titles, and duration against the Discogs release data. Flags low-confidence matches before you apply, reducing incorrect renames.
+- **discogs-cleaner.txt stamp** — after a successful rename, write a small text file inside each affected folder containing: the software name and GitHub link, the date and time the rename was applied, and the Discogs release URL that was matched.
+
+---
+
+## v1.6.0 — stats, key caching, changelog on update
+
+### New
+- **Lifetime + session stats bar** — shown at the top of the UI at all times. Session count resets on reset, lifetime total persists across sessions via `~/.discogs-cleaner/config.json`.
+- **Cached API keys** — consumer key and secret are saved to `~/.discogs-cleaner/config.json` via the server. Auto-filled on launch when server is running. Save and clear buttons in the sidebar.
+- **Changelog dialog on update** — desktop app shows a summary of what changed the first time it launches after an update.
+- **Tray menu improvements** — version number shown in tray tooltip and menu, changelog link added.
+- **Auto-updater fixed** — now correctly checks `nmyriad/discogs-cleaner-desktop` releases and surfaces errors gracefully.
+
+---
+
+## v1.5.0 — undo, capitalization, rate limiting, stamp files
+
+### New
+- **Undo last apply** — after applying renames on disk, an amber undo button appears. One click reverses the entire last batch, restoring all folders to their original names.
+- **Title case capitalization** — artist and release names from Discogs are now properly capitalized. Toggle in sidebar options. Handles common lowercase words (a, the, and, of, etc.) correctly.
+- **discogs-cleaner.txt stamp** — after a successful rename, a small text file is written inside each folder with the date, original name, new name, and Discogs release URL. Toggle in sidebar options.
+- **Auto-backoff on rate limiting** — when Discogs returns a 429 or fetch error, the tool automatically doubles the delay and retries up to 3 times before marking as error. A live indicator shows when the delay has been auto-increased.
+- **Default delay raised to 1000ms** — safer default for large batches. Backoff can push to 5000ms automatically if needed.
+
+### Fixed
+- **Bracket-dash format parser** — folders like `(2015) [47001 - WEB] 47001` now correctly extract the numeric ID for searching instead of being misread as catalog numbers.
+- **Retry on failed fetch** — transient network errors now retry with increasing delay instead of immediately failing.
+
+---
+
+## v1.3 — Windows compatibility
+
+### Fixed
+- **Unicode crash on Windows** — `server.py` used a UTF-8 arrow character (`→`) that Windows cp1252 encoding could not handle, causing a startup crash when bundled with PyInstaller. Replaced with ASCII `->` and added a UTF-8 stdout wrapper.
+- **`--index` argument added to server.py** — server can now be told where to find `index.html` at runtime, enabling correct operation when bundled inside the Electron desktop app.
+
+---
+
 ## v1.2 — parser overhaul
 
 ### Fixed
