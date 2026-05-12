@@ -8,7 +8,7 @@ A web-based tool that looks up music releases on Discogs and renames your librar
 
 Built for large local libraries with mixed naming conventions — catalog-numbered releases, year-prefixed folders, underscore-separated file names, paren-wrapped catalog numbers, and everything in between.
 
-> **Latest release: v1.2** — see [CHANGELOG.md](CHANGELOG.md) for full release notes.
+> **Latest release: v1.5.0** — see [CHANGELOG.md](CHANGELOG.md) for full release notes.
 
 ---
 
