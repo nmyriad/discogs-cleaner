@@ -218,19 +218,68 @@ function log(msg, type) {
   box.scrollTop = box.scrollHeight;
 }
 
+function normalizeToSpaces(s) {
+  // Replace underscores and dots used as word separators with spaces
+  return s.replace(/[_]/g, ' ').replace(/\.(?=[a-zA-Z])/g, ' ').trim();
+}
+
+function extractYear(s) {
+  var m = s.match(/(?:^|[-_\s(])(\d{4})(?:$|[-_\s)])/);
+  return m ? m[1] : '';
+}
+
+function cleanSearchQuery(s) {
+  // Strip common non-Discogs suffixes: WEB, WAV, FLAC, MP3, AFO, PTC, format tags
+  return s.replace(/[-_\s]+(WEB|WAV|FLAC|MP3|AFO|PTC|AIFF|320|V0|CBR|WEB-\w+)(?=[-_\s]|$)/gi, '').trim();
+}
+
 function parseFolder(raw) {
   raw = raw.trim();
   if (!raw) return null;
+
+  // 1. Already perfect: [CAT001] Artist - Title (Year)
   var perfect = raw.match(/^\[([A-Z0-9\-]+)\]\s+(.+?)\s+-\s+(.+?)\s+\((\d{4})\)$/i);
   if (perfect) return { original: raw, catalog: perfect[1].toUpperCase(), artist: perfect[2], title: perfect[3], year: perfect[4], mode: 'perfect' };
-  var catMatch = raw.match(/^\[([A-Z0-9\-]+)\]\s*(.*)$/i);
-  if (catMatch) return { original: raw, catalog: catMatch[1].toUpperCase(), rest: catMatch[2].trim(), mode: 'catalog' };
+
+  // 2. Square bracket catalog: [CAT001] rest
+  var sqCat = raw.match(/^\[([A-Z0-9\-]+)\]\s*(.*)$/i);
+  if (sqCat) return { original: raw, catalog: sqCat[1].toUpperCase(), rest: sqCat[2].trim(), mode: 'catalog' };
+
+  // 3. Paren catalog embedded anywhere: Artist-(CAT001)-stuff or (CAT001)-Artist
+  var parenCat = raw.match(/(?:^|[-_\s])\(([A-Z]{2,}\d+[A-Z0-9]*)\)(?:[-_\s]|$)/i);
+  if (parenCat) {
+    var cat = parenCat[1].toUpperCase();
+    // Build a clean search query from the whole name minus format noise
+    var normalized = normalizeToSpaces(cleanSearchQuery(raw));
+    var yr = extractYear(raw);
+    return { original: raw, catalog: cat, rest: normalized, year: yr, mode: 'catalog', reason: 'catalog in parens: ' + cat };
+  }
+
+  // 4. Year-first prefix: (1997) Artist - Title
   var yearFirst = raw.match(/^\((\d{4})\)\s+(.+?)\s+-\s+(.+)$/);
   if (yearFirst) return { original: raw, year: yearFirst[1], artist: yearFirst[2].trim(), title: yearFirst[3].trim(), mode: 'search' };
+
+  // 5. Artist - Title pattern (space-separated dash)
   var dashMatch = raw.match(/^(.+?)\s+-\s+(.+?)(?:\s+\((\d{4})\))?$/);
   if (dashMatch) return { original: raw, artist: dashMatch[1].trim(), title: dashMatch[2].trim(), year: dashMatch[3] || '', mode: 'search' };
-  if (raw.split(/\s+/).length <= 2) return { original: raw, skip: true, reason: 'too short — likely a label folder' };
-  return { original: raw, title: raw, mode: 'search' };
+
+  // 6. Underscore/hyphen heavy names (file-naming style: Artist_Name-Title-Year)
+  var normalized = normalizeToSpaces(raw);
+  var yr = extractYear(raw);
+  var wordCount = normalized.split(/\s+/).length;
+
+  // Only skip if genuinely short AND no digits (real label folders like 'INHERIT', 'A7A')
+  if (wordCount <= 2 && !raw.match(/\d/)) {
+    return { original: raw, skip: true, reason: 'short name with no numbers — likely a label folder' };
+  }
+
+  // Clean up for search
+  var searchable = cleanSearchQuery(normalized);
+  if (searchable.split(/\s+/).length <= 1) {
+    return { original: raw, skip: true, reason: 'could not extract searchable terms after cleanup' };
+  }
+
+  return { original: raw, title: searchable, year: yr, mode: 'search', reason: 'normalized from: ' + raw };
 }
 
 function buildName(catno, artist, title, year) {
@@ -278,6 +327,7 @@ function searchByQuery(q) {
 
 function processFolder(parsed, idx, total) {
   if (parsed.skip) {
+    log('skip: ' + parsed.original + ' — ' + parsed.reason, 'warn');
     return Promise.resolve({ original: parsed.original, newName: parsed.original, status: 'skip', reason: parsed.reason });
   }
   if (parsed.mode === 'perfect') {
@@ -290,16 +340,32 @@ function processFolder(parsed, idx, total) {
 
   var lookupPromise;
   if (parsed.mode === 'catalog' || parsed.mode === 'perfect') {
-    log('[' + idx + '/' + total + '] catalog lookup: ' + parsed.catalog, 'info');
+    var logMsg = '[' + idx + '/' + total + '] catalog lookup: ' + parsed.catalog;
+    if (parsed.reason) logMsg += ' (' + parsed.reason + ')';
+    log(logMsg, 'info');
     lookupPromise = searchByCatalog(parsed.catalog).then(function(hits) {
+      if (!hits.length) {
+        // Fallback 1: catalog + rest
+        if (parsed.rest) {
+          var q1 = cleanSearchQuery(parsed.rest);
+          log('  no catalog hits, trying: ' + parsed.catalog + ' ' + q1, 'warn');
+          return searchByQuery(parsed.catalog + ' ' + q1);
+        }
+        return hits;
+      }
+      return hits;
+    }).then(function(hits) {
       if (!hits.length && parsed.rest) {
-        log('  no catalog hits, falling back to search', 'warn');
-        return searchByQuery(parsed.catalog + ' ' + parsed.rest);
+        // Fallback 2: rest only, no catalog
+        var q2 = cleanSearchQuery(normalizeToSpaces(parsed.rest));
+        log('  still no hits, searching by name only: ' + q2, 'warn');
+        return searchByQuery(q2);
       }
       return hits;
     });
   } else {
     var q = parsed.artist ? parsed.artist + ' ' + parsed.title : parsed.title;
+    if (parsed.reason) log('[' + idx + '/' + total + '] ' + parsed.reason, 'info');
     log('[' + idx + '/' + total + '] searching: ' + q, 'info');
     lookupPromise = searchByQuery(q);
   }
