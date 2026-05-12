@@ -142,6 +142,19 @@
     </div>
 
     <div>
+      <div class="section-label">Folder path on disk</div>
+      <div class="field">
+        <label>Directory <span id="server-status" style="float:right;font-size:10px;color:var(--text3)">● file mode</span></label>
+        <input type="text" id="disk-path" placeholder="D:\Music\Labels\INHERIT" />
+      </div>
+      <div class="btn-row" style="margin-bottom:0.5rem">
+        <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="loadFromDisk()">↓ load subfolders</button>
+        <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="checkServer()">ping server</button>
+      </div>
+      <p class="tip" id="path-tip">Run <code style="color:var(--green)">python server.py</code> to enable disk integration. Or paste folder names manually below.</p>
+    </div>
+
+    <div>
       <div class="section-label">Paste folder names</div>
       <div class="field">
         <textarea id="folder-input" placeholder="[IHT013] Out of Office&#10;(1997) Delerium - Karma&#10;delerium silence&#10;artist - album name&#10;[DGS002] Luca Olivotto - I Swear (2023)"></textarea>
@@ -196,11 +209,13 @@
 
       <div class="progress-bar"><div class="progress-fill" id="progress" style="width:0%"></div></div>
 
-      <div class="btn-row" style="margin-bottom:1rem">
-        <button class="btn btn-green" onclick="copyTSV()">⎘ copy rename list</button>
-        <button class="btn btn-ghost" onclick="exportJSON()">↓ export JSON</button>
-        <button class="btn btn-ghost" onclick="copyPython()">⎘ copy python script</button>
+      <div class="btn-row" style="margin-bottom:0.5rem">
+        <button class="btn btn-green" id="apply-btn" onclick="applyOnDisk(false)">▶ apply on disk</button>
+        <button class="btn btn-ghost" onclick="applyOnDisk(true)">dry run</button>
+        <button class="btn btn-ghost" onclick="copyTSV()">⎘ copy list</button>
+        <button class="btn btn-ghost" onclick="exportJSON()">↓ JSON</button>
       </div>
+      <div id="apply-result" style="display:none;margin-bottom:0.75rem;padding:8px 12px;border-radius:4px;font-size:11px;background:var(--bg2);border:1px solid var(--border)"></div>
 
       <table class="results-table" id="results-table">
         <thead>
@@ -556,6 +571,99 @@ function showToast(msg) {
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2500);
 }
+
+const SERVER = 'http://localhost:7842';
+let serverAvailable = false;
+
+async function checkServer() {
+  try {
+    const r = await fetch(SERVER + '/api/ls?path=.', { signal: AbortSignal.timeout(1500) });
+    serverAvailable = r.ok || r.status === 400;
+  } catch {
+    serverAvailable = false;
+  }
+  const el = document.getElementById('server-status');
+  const tip = document.getElementById('path-tip');
+  if (serverAvailable) {
+    el.textContent = '● server connected';
+    el.style.color = 'var(--green)';
+    tip.innerHTML = 'Server running. Enter a folder path and click <strong>load subfolders</strong> to auto-populate.';
+  } else {
+    el.textContent = '● file mode';
+    el.style.color = 'var(--text3)';
+    tip.innerHTML = 'Run <code style="color:var(--green)">python server.py</code> to enable disk integration. Or paste folder names manually below.';
+  }
+  return serverAvailable;
+}
+
+async function loadFromDisk() {
+  const path = document.getElementById('disk-path').value.trim();
+  if (!path) { showToast('Enter a folder path first'); return; }
+  const ok = await checkServer();
+  if (!ok) { showToast('Server not running — start with: python server.py'); return; }
+  try {
+    const r = await fetch(SERVER + '/api/ls?path=' + encodeURIComponent(path));
+    const data = await r.json();
+    if (data.error) { showToast('Error: ' + data.error); return; }
+    document.getElementById('folder-input').value = data.folders.join('
+');
+    showToast('Loaded ' + data.folders.length + ' folders');
+  } catch(e) {
+    showToast('Failed: ' + e.message);
+  }
+}
+
+async function applyOnDisk(dryRun) {
+  const path = document.getElementById('disk-path').value.trim();
+  const toRename = allResults.filter(r => r.status === 'found' && r.original !== r.newName);
+  if (!toRename.length) { showToast('Nothing to rename'); return; }
+
+  const ok = await checkServer();
+  if (!ok) {
+    showToast('Server not running — start with: python server.py');
+    return;
+  }
+  if (!path) { showToast('Enter the folder path on the left first'); return; }
+
+  document.getElementById('apply-btn').disabled = true;
+  const resultEl = document.getElementById('apply-result');
+  resultEl.style.display = 'block';
+  resultEl.style.borderColor = 'var(--border)';
+  resultEl.textContent = (dryRun ? '[DRY RUN] ' : '') + 'Applying ' + toRename.length + ' renames...';
+
+  try {
+    const r = await fetch(SERVER + '/api/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, renames: toRename, dry_run: dryRun })
+    });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+
+    const ok2 = data.results.filter(r => r.result === 'ok' || r.result === 'dry_run').length;
+    const skipped = data.results.filter(r => r.result === 'skip').length;
+    const errors = data.results.filter(r => r.result === 'error').length;
+
+    resultEl.style.borderColor = errors ? 'var(--red)' : 'var(--green)';
+    resultEl.style.color = errors ? 'var(--red)' : 'var(--green)';
+    resultEl.textContent = (dryRun ? '[DRY RUN] ' : '') +
+      ok2 + ' renamed · ' + skipped + ' skipped · ' + errors + ' errors' +
+      (dryRun ? ' — run without dry run to apply' : '');
+
+    data.results.forEach(res => {
+      log((res.result === 'ok' ? '✓ ' : res.result === 'dry_run' ? '~ ' : '✗ ') +
+        res.original + (res.newName !== res.original ? ' → ' + res.newName : '') +
+        (res.reason ? ' (' + res.reason + ')' : ''), res.result === 'error' ? 'err' : res.result === 'skip' ? 'warn' : 'ok');
+    });
+  } catch(e) {
+    resultEl.style.borderColor = 'var(--red)';
+    resultEl.style.color = 'var(--red)';
+    resultEl.textContent = 'Error: ' + e.message;
+  }
+  document.getElementById('apply-btn').disabled = false;
+}
+
+checkServer();
 </script>
 </body>
 </html>
