@@ -6,7 +6,51 @@ A web-based tool that looks up music releases on Discogs and renames your librar
 [CAT001] Artist - Title (Year)
 ```
 
-Built for large local libraries with mixed naming conventions — catalog-numbered releases, year-prefixed folders, bare artist/title combos, etc.
+Built for large local libraries with mixed naming conventions — catalog-numbered releases, year-prefixed folders, bare artist/title combos, and everything in between.
+
+---
+
+## What's new in v1.0
+
+- **Apply on disk** — rename folders directly from the UI, no manual JSON export step needed
+- **Load subfolders** — point the tool at a directory and it auto-populates the folder list
+- **Dry run mode** — preview every rename before anything touches the disk
+- **Local server bridge** (`server.py`) — lightweight Python server that connects the UI to your filesystem
+- **Setup scripts** (`setup.bat` / `setup.sh`) — auto-detect and install Python if missing, then launch the server in one double-click
+- **Inline editing** — correct any Discogs match in the UI before applying
+- **Tabbed results** — filter by All / Changed / Errors / Skipped
+- **Auto-detect input format** — catalog numbers, year-prefix, artist-title, and raw names all handled automatically
+
+---
+
+## Quick start
+
+### Windows
+
+```
+Double-click setup.bat
+```
+
+That's it. It will check for Python, install it if needed, and launch the server. Your browser opens automatically at `http://localhost:7842`.
+
+### Mac / Linux
+
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+---
+
+## Manual start (if Python is already installed)
+
+```powershell
+python server.py
+```
+
+Then open `http://localhost:7842` in your browser.
+
+To use the UI without the server (no disk integration), just open `index.html` directly in your browser.
 
 ---
 
@@ -16,35 +60,20 @@ Built for large local libraries with mixed naming conventions — catalog-number
 
 Go to [discogs.com/settings/developers](https://www.discogs.com/settings/developers) and create an app. You'll get a **Consumer Key** and **Consumer Secret**.
 
-### 2. Open the web UI
+Enter them in the sidebar. They're stored only in memory — never saved to disk or sent anywhere except Discogs.
 
-Just open `index.html` in any browser — no server needed.
+### 2. Load your folders
 
-Paste your Consumer Key and Secret into the sidebar, then paste folder names (one per line) and hit **fetch & rename**.
+**With the server running:**
+- Enter a folder path in the **Folder path on disk** field (e.g. `D:\Music\Labels\INHERIT`)
+- Click **load subfolders** — the list auto-populates
 
-### 3. Review & export
+**Without the server:**
+- Paste folder names manually, one per line
 
-The UI shows every proposed rename. You can edit any name inline before exporting. When happy:
+### 3. Fetch & rename
 
-- **Copy rename list** — tab-separated old → new, for reference
-- **Export JSON** — machine-readable, used by `rename.py`
-- **Copy Python script** — standalone script with renames baked in, ready to run
-
-### 4. Apply renames on disk
-
-```bash
-# Preview first (no changes)
-python rename.py --path "D:/Music/Labels" --input discogs-cleaner-results.json --dry-run
-
-# Apply
-python rename.py --path "D:/Music/Labels" --input discogs-cleaner-results.json
-```
-
----
-
-## Folder name parsing
-
-The tool auto-detects input format and chooses the best Discogs lookup strategy:
+Hit **fetch & rename**. The tool searches Discogs for each folder using the best available strategy:
 
 | Input format | Strategy |
 |---|---|
@@ -53,6 +82,12 @@ The tool auto-detects input format and chooses the best Discogs lookup strategy:
 | `(1997) Delerium - Karma` | Artist + title search |
 | `delerium silence` | Title search |
 | `INHERIT` | Skipped (too short, likely a label folder) |
+
+### 4. Review & apply
+
+- Edit any proposed name inline before applying
+- Click **dry run** to preview what would change on disk
+- Click **apply on disk** to rename folders instantly
 
 ---
 
@@ -65,13 +100,7 @@ Everything is normalised to:
 ```
 
 - Compilations / Various Artists → `[CATALOG] Title (Year)` (no artist prefix)
-- If no catalog number is found → `Artist - Title (Year)`
-
----
-
-## Rate limiting
-
-Discogs allows ~25 unauthenticated requests/minute with consumer key auth. The default delay is 500ms between requests. Adjust in the sidebar options if you hit 429 errors.
+- If no catalog number is found on Discogs → `Artist - Title (Year)`
 
 ---
 
@@ -79,20 +108,34 @@ Discogs allows ~25 unauthenticated requests/minute with consumer key auth. The d
 
 | File | Purpose |
 |---|---|
-| `index.html` | Web UI — open in browser, no server needed |
-| `rename.py` | Python script to apply renames on disk |
-| `config.example` | Example credentials file (never commit real keys) |
+| `index.html` | Web UI — works standalone or via server |
+| `server.py` | Local server enabling disk read/write from the UI |
+| `rename.py` | Standalone CLI script for applying renames from a JSON export |
+| `setup.bat` | Windows: checks for Python, installs if needed, starts server |
+| `setup.sh` | Mac/Linux: checks for Python, installs if needed, starts server |
+| `config.example` | Credentials template — never commit your real keys |
+
+---
+
+## Rate limiting
+
+Discogs allows ~25 requests/minute with consumer key auth. The default delay is 500ms between requests. Adjust in the sidebar options if you hit 429 errors.
 
 ---
 
 ## Security
 
-- Credentials are never stored — only held in memory while the page is open
+- Credentials are never stored — held in memory only while the page is open
+- The local server binds to `127.0.0.1` only — not accessible from other machines
 - Never commit your real Consumer Key/Secret to this repo
-- The `config.example` file is a template only
+- `config.example` is a template only — keep real credentials out of git
 
 ---
 
 ## License
 
 MIT
+
+---
+
+- nmyriad
